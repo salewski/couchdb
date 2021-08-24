@@ -23,6 +23,7 @@
 -export([validate_all_docs_args/2, validate_args/3]).
 -export([upgrade_mrargs/1]).
 -export([worker_ranges/1]).
+-export([isolate/1, isolate/2]).
 
 -compile({inline, [{doc_id_and_rev,1}]}).
 
@@ -345,3 +346,51 @@ worker_ranges(Workers) ->
         [{X, Y} | Acc]
     end, [], Workers),
     lists:usort(Ranges).
+
+
+% If we issue multiple fabric calls from the same process we have to isolate
+% them so in case of error they don't pollute the processes dictionary or the
+% mailbox
+
+isolate(Fun) ->
+    isolate(Fun, infinity).
+
+
+isolate(Fun, Timeout) ->
+    {Pid, Ref} = erlang:spawn_monitor(fun() -> exit(do_isolate(Fun)) end),
+    receive
+        {'DOWN', Ref, _, _, {'$isolres', Res}} ->
+            Res;
+        {'DOWN', Ref, _, _, {'$isolerr', Tag, Reason, Stack}} ->
+            erlang:raise(Tag, Reason, Stack)
+    after Timeout ->
+        erlang:demonitor(Ref, [flush]),
+        exit(Pid, kill),
+        erlang:error(timeout)
+    end.
+
+
+% OTP_RELEASE is defined in OTP 21+ only
+-ifdef(OTP_RELEASE).
+
+
+do_isolate(Fun) ->
+    try
+        {'$isolres', Fun()}
+    catch Tag:Reason:Stack ->
+        {'$isolerr', Tag, Reason, Stack}
+    end.
+
+
+-else.
+
+
+do_isolate(Fun) ->
+    try
+        {'$isolres', Fun()}
+    catch ?STACKTRACE(Tag, Reason, Stack)
+        {'$isolerr', Tag, Reason, Stack}
+    end.
+
+
+-endif.

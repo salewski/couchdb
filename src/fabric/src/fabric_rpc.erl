@@ -26,7 +26,7 @@
 
 -export([get_db_info/2, get_doc_count/2, get_design_doc_count/2,
          get_update_seq/2, changes/4, map_view/5, reduce_view/5,
-         group_info/3, update_mrview/4]).
+         group_info/3, update_mrview/4, get_uuid/1]).
 
 -include_lib("fabric/include/fabric.hrl").
 -include_lib("couch/include/couch_db.hrl").
@@ -317,6 +317,9 @@ compact(ShardName, DesignName) ->
         couch_mrview_index, ShardName, <<"_design/", DesignName/binary>>),
     Ref = erlang:make_ref(),
     Pid ! {'$gen_call', {self(), Ref}, compact}.
+
+get_uuid(DbName) ->
+    with_db(DbName, [], {couch_db, get_uuid, []}).
 
 %%
 %% internal
